@@ -584,16 +584,14 @@ void loop() {
       codeSelectBtnCam.addEventListener('click', () => {
         codeSelectBtnCam.classList.add('active');
         codeSelectBtnTemp.classList.remove('active');
-        espCodeBlock.textContent = `/* ESP32-CAM Persistent High-Speed Live Stream (10-15 FPS) */
+        espCodeBlock.textContent = `/* ESP32-CAM (AI-THINKER) Live Video Streaming to Render */
 #include "esp_camera.h"
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-const char* STREAM_HOST   = "astra26.onrender.com";
-
-WiFiClientSecure client;
+const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
 
 void setup() {
   Serial.begin(115200);
@@ -609,29 +607,23 @@ void setup() {
   esp_camera_init(&config);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) delay(500);
-  client.setInsecure();
 }
 
 void loop() {
-  if (!client.connected()) {
-    if (client.connect(STREAM_HOST, 443)) {
-      client.println("POST /api/camera/stream_push HTTP/1.1");
-      client.print("Host: "); client.println(STREAM_HOST);
-      client.println("Content-Type: multipart/x-mixed-replace; boundary=frameboundary");
-      client.println("Transfer-Encoding: chunked");
-      client.println("Connection: keep-alive\r\n");
-    }
-  } else {
+  if (WiFi.status() == WL_CONNECTED) {
     camera_fb_t * fb = esp_camera_fb_get();
     if (fb) {
-      String b = "--frameboundary\r\nContent-Type: image/jpeg\r\nContent-Length: " + String(fb->len) + "\r\n\r\n";
-      client.print(String(b.length() + fb->len + 2, HEX) + "\r\n" + b);
-      client.write(fb->buf, fb->len);
-      client.print("\r\n\r\n");
+      HTTPClient http;
+      http.begin(SERVER_URL);
+      http.setReuse(true);
+      http.setTimeout(4000);
+      http.addHeader("Content-Type", "image/jpeg");
+      http.POST(fb->buf, fb->len);
+      http.end();
       esp_camera_fb_return(fb);
     }
   }
-  delay(60); // ~15 FPS
+  delay(250); // ~4 FPS live stream
 }`;
       });
 
