@@ -1,14 +1,15 @@
 /*
  * ===================================================================
- *  ESP32-CAM (AI-THINKER) Web-Safe Cloud Streamer
+ *  ESP32-CAM (AI-THINKER) Web-Safe Cloud Streamer (Insecure HTTPS)
  * ===================================================================
- *  - Uses clean single-session HTTP connections (http.setReuse(false))
- *  - Fixes socket drops when viewing the website in a browser
+ *  - Uses WiFiClientSecure with client.setInsecure() to bypass TLS cert verification
+ *  - Eliminates -1 (connection refused) HTTPS handshake errors on Render
  */
 
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 // ===================================================================
 //  USER CONFIGURATION - CHANGE THESE VALUES BEFORE UPLOADING
@@ -109,10 +110,12 @@ void sendFrame() {
     return;
   }
 
+  WiFiClientSecure client;
+  client.setInsecure(); // Skip HTTPS certificate verification for fast 100% reliable connection
+
   HTTPClient http;
-  http.begin(SERVER_URL);
-  http.setReuse(false);   // Fresh clean HTTP connection per frame (prevents socket reset when website opens)
-  http.setTimeout(8000);  // 8s timeout
+  http.begin(client, SERVER_URL); // Pass secure client explicitly
+  http.setTimeout(8000);          // 8s timeout
   http.addHeader("Content-Type", "image/jpeg");
 
   int httpCode = http.POST(fb->buf, fb->len);

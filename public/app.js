@@ -584,10 +584,11 @@ void loop() {
       codeSelectBtnCam.addEventListener('click', () => {
         codeSelectBtnCam.classList.add('active');
         codeSelectBtnTemp.classList.remove('active');
-        espCodeBlock.textContent = `/* ESP32-CAM Web-Safe Cloud Stream */
+        espCodeBlock.textContent = `/* ESP32-CAM Web-Safe Cloud Stream (Insecure HTTPS) */
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
@@ -614,9 +615,10 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     camera_fb_t * fb = esp_camera_fb_get();
     if (fb) {
+      WiFiClientSecure client;
+      client.setInsecure();
       HTTPClient http;
-      http.begin(SERVER_URL);
-      http.setReuse(false);
+      http.begin(client, SERVER_URL);
       http.setTimeout(8000);
       http.addHeader("Content-Type", "image/jpeg");
       http.POST(fb->buf, fb->len);
@@ -624,9 +626,10 @@ void loop() {
       esp_camera_fb_return(fb);
     }
   }
-  delay(2000); // 2s interval
+  delay(2000);
 }`;
       });
+
 
 
 
