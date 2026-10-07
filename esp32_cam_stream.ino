@@ -32,9 +32,8 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
 
 // Frame capture delay (in milliseconds). 
-// 200ms = ~5 Frames Per Second (FPS)
-// 500ms = ~2 Frames Per Second (FPS)
-const int FRAME_DELAY_MS  = 300; 
+// 800ms = ~1.2 Frames Per Second (FPS) - Optimal for stable cloud streaming
+const int FRAME_DELAY_MS  = 800; 
 // ===================================================================
 
 // AI-THINKER CAMERA PIN CONFIGURATION
@@ -140,6 +139,8 @@ void sendCameraFrame() {
 
   HTTPClient http;
   http.begin(SERVER_URL);
+  http.setReuse(true); // Reuse TCP/SSL connection for smooth streaming
+  http.setTimeout(5000); // 5s timeout
   http.addHeader("Content-Type", "image/jpeg");
   http.addHeader("x-sensor-id", "ESP32_CAM_PRO");
 
@@ -155,3 +156,4 @@ void sendCameraFrame() {
   http.end();
   esp_camera_fb_return(fb); // Release memory buffer
 }
+
