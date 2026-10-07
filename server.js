@@ -96,7 +96,7 @@ app.get('/api/temperature/history', (req, res) => {
 });
 
 // POST new temperature reading (from ESP32 or HTTP client)
-app.post('/api/temperature', (req, res) => {
+const handleTemperaturePost = (req, res) => {
   const apiKey = req.headers['x-api-key'] || req.body.api_key;
   
   // If API_KEY is set in env, enforce authorization check
@@ -145,7 +145,15 @@ app.post('/api/temperature', (req, res) => {
     message: 'Temperature recorded successfully',
     data: record
   });
-});
+};
+
+// Mount route handler on primary and alias endpoints for robust compatibility
+app.post('/api/temperature', handleTemperaturePost);
+app.post('/api/temp', handleTemperaturePost);
+app.post('/temperature', handleTemperaturePost);
+app.post('/update', handleTemperaturePost);
+app.post('/', handleTemperaturePost);
+
 
 // POST endpoint to trigger simulated telemetry (for live UI testing)
 app.post('/api/simulate', (req, res) => {
