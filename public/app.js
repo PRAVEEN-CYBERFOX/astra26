@@ -584,7 +584,7 @@ void loop() {
       codeSelectBtnCam.addEventListener('click', () => {
         codeSelectBtnCam.classList.add('active');
         codeSelectBtnTemp.classList.remove('active');
-        espCodeBlock.textContent = `/* ESP32-CAM Rate-Limit Safe Cloud Stream (QVGA 320x240) */
+        espCodeBlock.textContent = `/* ESP32-CAM (AI-THINKER) Robust Cloud Stream */
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -603,6 +603,7 @@ void setup() {
   config.pin_sscb_sda = 26; config.pin_sscb_scl = 27; config.pin_pwdn = 32; config.pin_reset = -1;
   config.xclk_freq_hz = 20000000; config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA; config.jpeg_quality = 15; config.fb_count = 1;
+  config.fb_location = CAMERA_FB_IN_DRAM; config.grab_mode = CAMERA_GRAB_LATEST;
 
   esp_camera_init(&config);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -623,9 +624,10 @@ void loop() {
       esp_camera_fb_return(fb);
     }
   }
-  delay(3000); // 3s interval prevents Render free tier IP rate-limiting
+  delay(3000); // 3s interval
 }`;
       });
+
 
 
 

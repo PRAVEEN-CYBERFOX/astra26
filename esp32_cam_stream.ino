@@ -1,9 +1,10 @@
 /*
  * ===================================================================
- *  ESP32-CAM Rate-Limit Safe Cloud Streamer for Render Free Tier
+ *  ESP32-CAM (AI-THINKER) Robust Cloud Streamer
  * ===================================================================
- *  - Fixed Render Free Tier HTTPS Rate Limiting & Connection Refused
- *  - Set 3-second frame interval (20 frames/min) to prevent IP blocks
+ *  - Fixed frame buffer malloc failed (CAMERA_FB_IN_DRAM)
+ *  - Fixed cam_hal: FB-OVF overflow
+ *  - Rate-limit safe 3-second frame interval for Render
  */
 
 #include "esp_camera.h"
@@ -20,7 +21,6 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
 
 // Frame upload interval (3000ms = 3 seconds per frame)
-// Crucial for Render Free Tier to avoid HTTP connection rate-limit blocks!
 const int FRAME_INTERVAL_MS = 3000; 
 // ===================================================================
 
@@ -47,7 +47,7 @@ const int FRAME_INTERVAL_MS = 3000;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n--- Starting Rate-Limit Safe ESP32-CAM Stream ---");
+  Serial.println("\n--- Starting ESP32-CAM Streamer ---");
 
   pinMode(LED_FLASH_GPIO, OUTPUT);
   digitalWrite(LED_FLASH_GPIO, LOW);
@@ -66,10 +66,12 @@ void setup() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   
-  // STABLE LIGHTWEIGHT RESOLUTION
-  config.frame_size = FRAMESIZE_QVGA; // 320x240 (~3.5 KB)
+  // STABLE CONFIGURATION PREVENTING MALLOC FAIL & OVERFLOW
+  config.frame_size = FRAMESIZE_QVGA; // 320x240 (~3.5 KB payload)
   config.jpeg_quality = 15;
   config.fb_count = 1;
+  config.fb_location = CAMERA_FB_IN_DRAM; // Forces allocation in internal DRAM
+  config.grab_mode = CAMERA_GRAB_LATEST;
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -110,8 +112,8 @@ void sendFrame() {
 
   HTTPClient http;
   http.begin(SERVER_URL);
-  http.setReuse(true);    // Keep TLS connection alive
-  http.setTimeout(6000);  // 6s timeout
+  http.setReuse(true);
+  http.setTimeout(6000); // 6s timeout
   http.addHeader("Content-Type", "image/jpeg");
 
   int httpCode = http.POST(fb->buf, fb->len);
@@ -120,9 +122,9 @@ void sendFrame() {
     Serial.printf("⚡ Frame Sent (%u bytes) -> HTTP %d\n", fb->len, httpCode);
   } else {
     Serial.printf("⚠️ POST Response: %d (%s) - Backing off...\n", httpCode, http.errorToString(httpCode).c_str());
-    delay(2000); // Cool down on error
+    delay(2000);
   }
 
   http.end();
-  esp_camera_fb_return(fb); // Free memory buffer
+  esp_camera_fb_return(fb); // Free buffer memory
 }
