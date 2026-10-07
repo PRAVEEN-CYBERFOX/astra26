@@ -50,6 +50,9 @@
       <button class="tab-btn active" data-tab="live">
         <i class="fa-solid fa-gauge-high"></i> Live Monitor
       </button>
+      <button class="tab-btn" data-tab="camera">
+        <i class="fa-solid fa-video"></i> Live Camera Feed
+      </button>
       <button class="tab-btn" data-tab="analytics">
         <i class="fa-solid fa-chart-line"></i> Analytics & Graphs
       </button>
@@ -60,6 +63,7 @@
         <i class="fa-solid fa-microchip"></i> ESP32 Code & Setup Guide
       </button>
     </nav>
+
 
     <!-- Main Content Container -->
     <main class="content-container">
@@ -151,21 +155,60 @@
           </div>
         </div>
 
-        <!-- Realtime Mini Chart Card -->
-        <div class="card chart-card">
+      <!-- TAB 2: LIVE CAMERA FEED -->
+      <section id="tab-camera" class="tab-content">
+        <div class="card camera-card">
           <div class="card-header">
-            <h2><i class="fa-solid fa-chart-line"></i> Real-time Telemetry Stream</h2>
-            <div class="chart-actions">
-              <button class="btn btn-sm btn-outline active" data-range="20">Last 20</button>
-              <button class="btn btn-sm btn-outline" data-range="50">Last 50</button>
-              <button class="btn btn-sm btn-outline" data-range="100">Last 100</button>
+            <h2><i class="fa-solid fa-camera-retro"></i> ESP32-CAM Live Cloud Video Stream</h2>
+            <div class="camera-controls-header">
+              <span class="status-badge offline" id="camStatusBadge">
+                <span class="pulse-dot"></span>
+                <span id="camStatusText">Camera Offline</span>
+              </span>
+              <button id="cameraFullscreenBtn" class="btn btn-secondary btn-sm">
+                <i class="fa-solid fa-expand"></i> Fullscreen
+              </button>
             </div>
           </div>
-          <div class="chart-container">
-            <canvas id="liveChart"></canvas>
+
+          <div class="video-player-container" id="videoPlayerContainer">
+            <!-- Simulated or Live Camera Image Frame -->
+            <img id="cameraStreamImg" src="" alt="Waiting for ESP32-CAM live frame..." style="display: none;">
+            
+            <div class="camera-placeholder" id="cameraPlaceholder">
+              <div class="placeholder-icon"><i class="fa-solid fa-video-slash"></i></div>
+              <h3>ESP32-CAM Feed Offline</h3>
+              <p>Flash the ESP32-CAM firmware to start streaming live images to Render.</p>
+              <button id="simCameraFrameBtn" class="btn btn-primary" style="margin-top: 1rem;">
+                <i class="fa-solid fa-camera"></i> Test Simulated Frame
+              </button>
+            </div>
+
+            <!-- Overlays -->
+            <div class="camera-overlay-top">
+              <span id="camFpsBadge"><i class="fa-solid fa-bolt"></i> 0.0 FPS</span>
+              <span id="camResBadge">VGA 640x480</span>
+            </div>
+
+            <div class="camera-overlay-bottom">
+              <span id="camTimestampDisplay"><i class="fa-solid fa-clock"></i> No frames received</span>
+            </div>
+          </div>
+
+          <div class="camera-actions-bar">
+            <button id="takeSnapshotBtn" class="btn btn-primary">
+              <i class="fa-solid fa-camera"></i> Save Snapshot Photo
+            </button>
+            <a id="mjpegDirectLink" href="/api/camera/stream" target="_blank" class="btn btn-secondary">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Raw MJPEG Stream
+            </a>
+            <div class="cam-info-chip">
+              <i class="fa-solid fa-shield-halved"></i> Stream Endpoint: <code>/api/camera/frame</code>
+            </div>
           </div>
         </div>
       </section>
+
 
       <!-- TAB 2: ANALYTICS & HISTORICAL GRAPHS -->
       <section id="tab-analytics" class="tab-content">

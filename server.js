@@ -51,11 +51,17 @@ function saveData() {
 
 loadData();
 
+// Memory store for camera frame
+let latestCameraFrame = null;
+let lastCameraTimestamp = null;
+
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.raw({ type: ['image/jpeg', 'image/png'], limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
 
 // Health check endpoint for Render
 app.get('/api/health', (req, res) => {
@@ -155,7 +161,94 @@ app.post('/update', handleTemperaturePost);
 app.post('/', handleTemperaturePost);
 
 
-// POST endpoint to trigger simulated telemetry (for live UI testing)
+// Camera Frame Endpoint (Receives frame from ESP32-CAM)
+app.post(['/api/camera/frame', '/camera/frame', '/api/camera'], (req, res) => {
+  let imageBuffer = null;
+  let base64Data = null;
+
+  if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+    imageBuffer = req.body;
+    base64Data = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+  } else if (req.body && req.body.frame) {
+    base64Data = req.body.frame.startsWith('data:image') 
+      ? req.body.frame 
+      : `data:image/jpeg;base64,${req.body.frame}`;
+    const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    imageBuffer = Buffer.from(base64Clean, 'base64');
+  }
+
+  if (!imageBuffer || imageBuffer.length === 0) {
+    return res.status(400).json({ success: false, error: 'Invalid frame payload. Expected binary image/jpeg or JSON with base64 frame.' });
+  }
+
+  latestCameraFrame = imageBuffer;
+  lastCameraTimestamp = new Date().toISOString();
+
+  const payload = {
+    timestamp: lastCameraTimestamp,
+    frame: base64Data,
+    size: imageBuffer.length,
+    sensor_id: req.body.sensor_id || req.headers['x-sensor-id'] || 'ESP32_CAM'
+  };
+
+  // Broadcast live frame to web dashboard clients via Socket.io
+  io.emit('camera_frame', payload);
+
+  res.status(200).json({
+    success: true,
+    message: 'Camera frame received',
+    timestamp: lastCameraTimestamp
+  });
+});
+
+// GET latest single JPEG frame
+app.get('/api/camera/latest', (req, res) => {
+  if (!latestCameraFrame) {
+    return res.status(404).send('No camera frame received yet.');
+  }
+  res.writeHead(200, {
+    'Content-Type': 'image/jpeg',
+    'Content-Length': latestCameraFrame.length,
+    'Cache-Control': 'no-cache, no-store, must-revalidate'
+  });
+  res.end(latestCameraFrame);
+});
+
+// GET MJPEG Stream Endpoint (For standard video tags / direct URLs)
+app.get('/api/camera/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Connection': 'close',
+    'Pragma': 'no-cache'
+  });
+
+  const sendFrame = (data) => {
+    if (res.writableEnded) return;
+    try {
+      res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${data.length}\r\n\r\n`);
+      res.write(data);
+      res.write('\r\n');
+    } catch (e) {
+      console.error('MJPEG stream write error:', e.message);
+    }
+  };
+
+  if (latestCameraFrame) {
+    sendFrame(latestCameraFrame);
+  }
+
+  const frameListener = (payload) => {
+    if (latestCameraFrame) sendFrame(latestCameraFrame);
+  };
+
+  io.on('camera_frame', frameListener);
+
+  req.on('close', () => {
+    io.off('camera_frame', frameListener);
+  });
+});
+
 app.post('/api/simulate', (req, res) => {
   const baseTemp = req.body.baseTemp ? parseFloat(req.body.baseTemp) : 24.5;
   const variation = (Math.random() - 0.5) * 2.5; // +/- 1.25 degrees

@@ -42,8 +42,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const highTempAlertInput = document.getElementById('highTempAlert');
   const lowTempAlertInput = document.getElementById('lowTempAlert');
 
+  // Camera stream variables
+  let lastFrameTime = Date.now();
+  let frameCount = 0;
+  let fpsTimer = null;
+  let currentFps = 0.0;
+  
+  const camStatusBadge = document.getElementById('camStatusBadge');
+  const camStatusText = document.getElementById('camStatusText');
+  const cameraStreamImg = document.getElementById('cameraStreamImg');
+  const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+  const camFpsBadge = document.getElementById('camFpsBadge');
+  const camTimestampDisplay = document.getElementById('camTimestampDisplay');
+  const takeSnapshotBtn = document.getElementById('takeSnapshotBtn');
+  const cameraFullscreenBtn = document.getElementById('cameraFullscreenBtn');
+  const simCameraFrameBtn = document.getElementById('simCameraFrameBtn');
+  const videoPlayerContainer = document.getElementById('videoPlayerContainer');
+
   // Initialize Socket.io Connection
   initSocket();
+
 
   // Initialize Charts
   initLiveChart();
@@ -115,12 +133,31 @@ document.addEventListener('DOMContentLoaded', () => {
       updateUI();
     });
 
-    socket.on('history_cleared', () => {
-      historyData = [];
-      currentReading = null;
-      updateUI();
+    socket.on('camera_frame', (payload) => {
+      if (payload && payload.frame) {
+        cameraStreamImg.src = payload.frame;
+        cameraStreamImg.style.display = 'block';
+        cameraPlaceholder.style.display = 'none';
+
+        camStatusBadge.className = 'status-badge online';
+        camStatusText.textContent = 'Camera Live Stream';
+
+        const now = Date.now();
+        frameCount++;
+        if (now - lastFrameTime >= 1000) {
+          currentFps = (frameCount * 1000 / (now - lastFrameTime)).toFixed(1);
+          camFpsBadge.innerHTML = `<i class="fa-solid fa-bolt"></i> ${currentFps} FPS`;
+          frameCount = 0;
+          lastFrameTime = now;
+        }
+
+        const dateStr = new Date(payload.timestamp).toLocaleTimeString();
+        camTimestampDisplay.innerHTML = `<i class="fa-solid fa-clock"></i> Last frame: ${dateStr}`;
+      }
     });
-  }
+
+    setupCameraActions();
+
 
   function formatTemp(valC, valF) {
     if (valC === undefined || valC === null) return '--.-';
@@ -457,15 +494,90 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function setupCodeCopy() {
-    copyCodeBtn.addEventListener('click', () => {
-      const code = document.getElementById('espCodeBlock').textContent;
-      navigator.clipboard.writeText(code).then(() => {
-        copyCodeBtn.innerHTML = `<i class="fa-solid fa-check"></i> Copied!`;
-        setTimeout(() => {
-          copyCodeBtn.innerHTML = `<i class="fa-solid fa-copy"></i> Copy Sketch`;
-        }, 2000);
+  function setupCameraActions() {
+    // Snapshot button
+    if (takeSnapshotBtn) {
+      takeSnapshotBtn.addEventListener('click', () => {
+        if (!cameraStreamImg.src || cameraStreamImg.style.display === 'none') {
+          alert('No live camera stream active to take a snapshot!');
+          return;
+        }
+        const link = document.createElement('a');
+        link.download = `esp32_cam_snapshot_${Date.now()}.jpg`;
+        link.href = cameraStreamImg.src;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       });
-    });
+    }
+
+    // Fullscreen button
+    if (cameraFullscreenBtn && videoPlayerContainer) {
+      cameraFullscreenBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          videoPlayerContainer.requestFullscreen().catch(err => {
+            alert(`Error attempting to enable fullscreen: ${err.message}`);
+          });
+        } else {
+          document.exitFullscreen();
+        }
+      });
+    }
+
+    // Canvas Test Generator for Camera Simulation
+    if (simCameraFrameBtn) {
+      simCameraFrameBtn.addEventListener('click', () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+
+        // Draw futuristic camera test pattern
+        ctx.fillStyle = '#060911';
+        ctx.fillRect(0, 0, 640, 480);
+
+        // Grid lines
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < 640; x += 40) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 480); ctx.stroke();
+        }
+        for (let y = 0; y < 480; y += 40) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(640, y); ctx.stroke();
+        }
+
+        // Center reticle
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(320, 240, 60, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f87171';
+        ctx.beginPath();
+        ctx.arc(320, 240, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Text banner
+        ctx.fillStyle = '#f3f4f6';
+        ctx.font = 'bold 22px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('ESP32-CAM SIMULATED FRAME', 320, 180);
+
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '16px JetBrains Mono, monospace';
+        ctx.fillText(`TIMESTAMP: ${new Date().toLocaleTimeString()}`, 320, 320);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        // Send to backend endpoint
+        fetch('/api/camera/frame', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ frame: dataUrl, sensor_id: 'ESP32_CAM_SIMULATED' })
+        }).catch(err => console.error('Sim camera error:', err));
+      });
+    }
   }
 });
+
