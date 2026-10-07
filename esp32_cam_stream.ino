@@ -1,9 +1,9 @@
 /*
  * ===================================================================
- *  ESP32-CAM (AI-THINKER) Ultra-Stable Cloud Live Streamer
+ *  ESP32-CAM Rate-Limit Safe Cloud Streamer for Render Free Tier
  * ===================================================================
- *  - Fixed cam_hal: FB-OVF (Frame Buffer Overflow)
- *  - Optimized for Mobile Hotspots & Cloud Bandwidth (QVGA 320x240)
+ *  - Fixed Render Free Tier HTTPS Rate Limiting & Connection Refused
+ *  - Set 3-second frame interval (20 frames/min) to prevent IP blocks
  */
 
 #include "esp_camera.h"
@@ -19,9 +19,9 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 // Your Render Cloud API endpoint
 const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
 
-// Delay between frame uploads (in milliseconds)
-// 800ms = ~1.2 FPS (Super stable on mobile hotspot & cloud)
-const int FRAME_INTERVAL_MS = 800; 
+// Frame upload interval (3000ms = 3 seconds per frame)
+// Crucial for Render Free Tier to avoid HTTP connection rate-limit blocks!
+const int FRAME_INTERVAL_MS = 3000; 
 // ===================================================================
 
 // AI-THINKER CAMERA PIN CONFIGURATION
@@ -47,7 +47,7 @@ const int FRAME_INTERVAL_MS = 800;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n--- Starting ESP32-CAM Ultra-Stable Cloud Stream ---");
+  Serial.println("\n--- Starting Rate-Limit Safe ESP32-CAM Stream ---");
 
   pinMode(LED_FLASH_GPIO, OUTPUT);
   digitalWrite(LED_FLASH_GPIO, LOW);
@@ -66,22 +66,22 @@ void setup() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   
-  // OPTIMIZED FOR STABILITY & ZERO OVERFLOW
-  config.frame_size = FRAMESIZE_QVGA; // 320x240 (~3.5 KB per frame)
-  config.jpeg_quality = 14;            // Optimal JPEG compression
-  config.fb_count = 1;                 // Single buffer prevents cam_hal: FB-OVF overflow
+  // STABLE LIGHTWEIGHT RESOLUTION
+  config.frame_size = FRAMESIZE_QVGA; // 320x240 (~3.5 KB)
+  config.jpeg_quality = 15;
+  config.fb_count = 1;
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("❌ Camera init failed with error 0x%x\n", err);
+    Serial.printf("❌ Camera init failed: 0x%x\n", err);
     return;
   }
 
-  Serial.println("✅ ESP32-CAM Hardware initialized.");
+  Serial.println("✅ Camera Hardware Ready.");
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi: "); Serial.println(WIFI_SSID);
+  Serial.print("Connecting to WiFi");
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -95,7 +95,8 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     sendFrame();
   } else {
-    delay(1000);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    delay(2000);
   }
   delay(FRAME_INTERVAL_MS);
 }
@@ -103,24 +104,25 @@ void loop() {
 void sendFrame() {
   camera_fb_t * fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("⚠️ Camera frame capture failed");
+    Serial.println("⚠️ Camera capture failed");
     return;
   }
 
   HTTPClient http;
   http.begin(SERVER_URL);
-  http.setReuse(false);   // Fresh connection per frame prevents socket locks
-  http.setTimeout(5000);  // 5s network timeout
+  http.setReuse(true);    // Keep TLS connection alive
+  http.setTimeout(6000);  // 6s timeout
   http.addHeader("Content-Type", "image/jpeg");
 
   int httpCode = http.POST(fb->buf, fb->len);
 
-  if (httpCode > 0) {
+  if (httpCode == 200 || httpCode == 201) {
     Serial.printf("⚡ Frame Sent (%u bytes) -> HTTP %d\n", fb->len, httpCode);
   } else {
-    Serial.printf("❌ Send Error: %s\n", http.errorToString(httpCode).c_str());
+    Serial.printf("⚠️ POST Response: %d (%s) - Backing off...\n", httpCode, http.errorToString(httpCode).c_str());
+    delay(2000); // Cool down on error
   }
 
   http.end();
-  esp_camera_fb_return(fb); // Free buffer memory
+  esp_camera_fb_return(fb); // Free memory buffer
 }

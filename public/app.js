@@ -584,7 +584,7 @@ void loop() {
       codeSelectBtnCam.addEventListener('click', () => {
         codeSelectBtnCam.classList.add('active');
         codeSelectBtnTemp.classList.remove('active');
-        espCodeBlock.textContent = `/* ESP32-CAM Ultra-Stable Live Stream (QVGA 320x240) */
+        espCodeBlock.textContent = `/* ESP32-CAM Rate-Limit Safe Cloud Stream (QVGA 320x240) */
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -602,7 +602,7 @@ void setup() {
   config.pin_xclk = 0; config.pin_pclk = 22; config.pin_vsync = 25; config.pin_href = 23;
   config.pin_sscb_sda = 26; config.pin_sscb_scl = 27; config.pin_pwdn = 32; config.pin_reset = -1;
   config.xclk_freq_hz = 20000000; config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_QVGA; config.jpeg_quality = 14; config.fb_count = 1;
+  config.frame_size = FRAMESIZE_QVGA; config.jpeg_quality = 15; config.fb_count = 1;
 
   esp_camera_init(&config);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -615,17 +615,18 @@ void loop() {
     if (fb) {
       HTTPClient http;
       http.begin(SERVER_URL);
-      http.setReuse(false);
-      http.setTimeout(5000);
+      http.setReuse(true);
+      http.setTimeout(6000);
       http.addHeader("Content-Type", "image/jpeg");
       http.POST(fb->buf, fb->len);
       http.end();
       esp_camera_fb_return(fb);
     }
   }
-  delay(800); // Stable stream delay
+  delay(3000); // 3s interval prevents Render free tier IP rate-limiting
 }`;
       });
+
 
 
     }
