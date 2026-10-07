@@ -342,10 +342,21 @@ io.on('connection', (socket) => {
     history: temperatureHistory.slice(-100)
   });
 
+  // If a camera frame is stored, send it immediately to the new client
+  if (latestCameraFrame) {
+    socket.emit('camera_frame', {
+      timestamp: lastCameraTimestamp,
+      frame: `data:image/jpeg;base64,${latestCameraFrame.toString('base64')}`,
+      size: latestCameraFrame.length,
+      sensor_id: 'ESP32_CAM'
+    });
+  }
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
 });
+
 
 server.listen(PORT, () => {
   console.log(`====================================================`);
