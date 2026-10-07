@@ -161,7 +161,56 @@ app.post('/update', handleTemperaturePost);
 app.post('/', handleTemperaturePost);
 
 
-// Camera Frame Endpoint (Receives frame from ESP32-CAM)
+// Continuous MJPEG Stream Push Endpoint from ESP32-CAM
+app.post(['/api/camera/stream_push', '/camera/stream_push'], (req, res) => {
+  console.log('🎥 ESP32-CAM Live Stream Connected!');
+  
+  let buffer = Buffer.alloc(0);
+
+  req.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    
+    // Look for JPEG start (0xFF, 0xD8) and end (0xFF, 0xD9) markers
+    let startIdx = buffer.indexOf(Buffer.from([0xFF, 0xD8]));
+    let endIdx = buffer.indexOf(Buffer.from([0xFF, 0xD9]));
+
+    while (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const jpegBuffer = buffer.slice(startIdx, endIdx + 2);
+      latestCameraFrame = jpegBuffer;
+      lastCameraTimestamp = new Date().toISOString();
+
+      const base64Data = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+      
+      io.emit('camera_frame', {
+        timestamp: lastCameraTimestamp,
+        frame: base64Data,
+        size: jpegBuffer.length,
+        sensor_id: 'ESP32_CAM_LIVE_STREAM'
+      });
+
+      buffer = buffer.slice(endIdx + 2);
+      startIdx = buffer.indexOf(Buffer.from([0xFF, 0xD8]));
+      endIdx = buffer.indexOf(Buffer.from([0xFF, 0xD9]));
+    }
+
+    // Keep buffer manageable
+    if (buffer.length > 500000) {
+      buffer = Buffer.alloc(0);
+    }
+  });
+
+  req.on('end', () => {
+    console.log('🎥 ESP32-CAM Live Stream Disconnected');
+    res.status(200).send('Stream ended');
+  });
+
+  req.on('error', (err) => {
+    console.error('Stream error:', err.message);
+  });
+});
+
+// Camera Frame Endpoint (Receives single frame from ESP32-CAM)
+
 app.post(['/api/camera/frame', '/camera/frame', '/api/camera'], (req, res) => {
   let imageBuffer = null;
   let base64Data = null;

@@ -1,26 +1,15 @@
 /*
  * ===================================================================
- *  ESP32-CAM (AI-THINKER) Live Video Streaming to Render Cloud
+ *  ESP32-CAM High-Speed Continuous Live Video Streaming to Render
  * ===================================================================
  * 
- *  HARDWARE SETUP (ESP32-CAM AI-THINKER):
- *  --------------------------------------
- *  - Board: "AI Thinker ESP32-CAM"
- *  - PSRAM: Enabled (Recommended for HD / SVGA quality)
- *  - Flash Mode: QIO 80MHz
- *  - Partition Scheme: Huge APP (3MB No OTA / 1MB SPIFFS)
- * 
- *  WIRING FOR FLASHING (FTDI Programmer to ESP32-CAM):
- *  - FTDI 5V   --> ESP32-CAM 5V
- *  - FTDI GND  --> ESP32-CAM GND
- *  - FTDI TX   --> ESP32-CAM U0R (GPIO 3)
- *  - FTDI RX   --> ESP32-CAM U0T (GPIO 1)
- *  - GPIO 0    --> Connect to GND while uploading code! (Remove after uploading)
+ *  This code opens a PERSISTENT TCP/TLS Stream to Render and feeds
+ *  JPEG frames continuously at high frame rates (10 - 15 FPS)!
  */
 
 #include "esp_camera.h"
 #include <WiFi.h>
-#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 // ===================================================================
 //  USER CONFIGURATION - CHANGE THESE VALUES BEFORE UPLOADING
@@ -28,12 +17,13 @@
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
-// Your Render Cloud API endpoint for receiving camera frames
-const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
+// Your Render Cloud Domain (without http/https)
+const char* STREAM_HOST   = "astra26.onrender.com";
+const int   STREAM_PORT   = 443; // HTTPS Port
 
-// Frame capture delay (in milliseconds). 
-// 800ms = ~1.2 Frames Per Second (FPS) - Optimal for stable cloud streaming
-const int FRAME_DELAY_MS  = 800; 
+// Stream Delay between frames (in milliseconds)
+// 50ms = ~15-20 FPS | 100ms = ~10 FPS | 200ms = ~5 FPS
+const int FRAME_INTERVAL_MS = 60; 
 // ===================================================================
 
 // AI-THINKER CAMERA PIN CONFIGURATION
@@ -55,7 +45,10 @@ const int FRAME_DELAY_MS  = 800;
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-#define LED_FLASH_GPIO     4 // Built-in bright LED flash
+#define LED_FLASH_GPIO     4
+
+WiFiClientSecure client;
+bool isConnectedToStream = false;
 
 void setup() {
   Serial.begin(115200);
@@ -63,9 +56,9 @@ void setup() {
   Serial.println();
 
   pinMode(LED_FLASH_GPIO, OUTPUT);
-  digitalWrite(LED_FLASH_GPIO, LOW); // Flash LED OFF by default
+  digitalWrite(LED_FLASH_GPIO, LOW);
 
-  // Configure Camera Parameters
+  // Configure Camera
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -84,32 +77,29 @@ void setup() {
   config.pin_sscb_sda = SIOD_GPIO_NUM;
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
-
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   
-  // Set resolution depending on PSRAM availability
   if(psramFound()){
-    config.frame_size = FRAMESIZE_VGA;  // 640x480
-    config.jpeg_quality = 12;            // 0-63 (lower = higher quality)
+    config.frame_size = FRAMESIZE_VGA;  // 640x480 resolution
+    config.jpeg_quality = 12;            // 0-63 quality
     config.fb_count = 2;
   } else {
-    config.frame_size = FRAMESIZE_QVGA; // 320x240
+    config.frame_size = FRAMESIZE_QVGA; // 320x240 resolution
     config.jpeg_quality = 15;
     config.fb_count = 1;
   }
 
-  // Camera Initialization
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("❌ Camera init failed with error 0x%x", err);
+    Serial.printf("❌ Camera init failed with error 0x%x\n", err);
     return;
   }
 
-  Serial.println("✅ ESP32-CAM Hardware initialized successfully.");
+  Serial.println("✅ ESP32-CAM Hardware ready.");
 
-  // Connect to Wi-Fi
+  // Connect WiFi
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
@@ -117,43 +107,74 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\n✅ WiFi Connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
+  Serial.print("IP: "); Serial.println(WiFi.localIP());
+
+  client.setInsecure(); // Skip SSL certificate verification for fast connection
 }
 
 void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    sendCameraFrame();
-  } else {
-    delay(1000);
-  }
-  delay(FRAME_DELAY_MS);
-}
-
-void sendCameraFrame() {
-  camera_fb_t * fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("⚠️ Camera capture failed");
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    delay(2000);
     return;
   }
 
-  HTTPClient http;
-  http.begin(SERVER_URL);
-  http.setReuse(true); // Reuse TCP/SSL connection for smooth streaming
-  http.setTimeout(5000); // 5s timeout
-  http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("x-sensor-id", "ESP32_CAM_PRO");
-
-  // Send raw JPEG binary buffer over HTTP POST
-  int httpResponseCode = http.POST(fb->buf, fb->len);
-
-  if (httpResponseCode > 0) {
-    Serial.printf("📸 Frame sent (%u bytes) -> HTTP Code: %d\n", fb->len, httpResponseCode);
+  if (!client.connected()) {
+    connectLiveStream();
   } else {
-    Serial.printf("❌ POST failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
+    streamNextFrame();
   }
 
-  http.end();
-  esp_camera_fb_return(fb); // Release memory buffer
+  delay(FRAME_INTERVAL_MS);
 }
 
+void connectLiveStream() {
+  Serial.print("🎥 Connecting to live stream server: ");
+  Serial.println(STREAM_HOST);
+
+  if (client.connect(STREAM_HOST, STREAM_PORT)) {
+    Serial.println("✅ Connected to Render Stream server! Initiating persistent live stream...");
+    
+    // Send persistent HTTP POST header with chunked transfer encoding
+    client.println("POST /api/camera/stream_push HTTP/1.1");
+    client.print("Host: "); client.println(STREAM_HOST);
+    client.println("Content-Type: multipart/x-mixed-replace; boundary=frameboundary");
+    client.println("Transfer-Encoding: chunked");
+    client.println("Connection: keep-alive");
+    client.println();
+    
+    isConnectedToStream = true;
+  } else {
+    Serial.println("❌ Connection failed. Retrying in 2 seconds...");
+    delay(2000);
+  }
+}
+
+void streamNextFrame() {
+  camera_fb_t * fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("⚠️ Camera frame capture failed");
+    return;
+  }
+
+  // Calculate boundary header
+  String boundaryStr = "--frameboundary\r\nContent-Type: image/jpeg\r\nContent-Length: " + String(fb->len) + "\r\n\r\n";
+  int totalChunkLength = boundaryStr.length() + fb->len + 2;
+
+  // Send chunk length in hex (HTTP Chunked format)
+  client.print(String(totalChunkLength, HEX));
+  client.print("\r\n");
+
+  // Write boundary text
+  client.print(boundaryStr);
+
+  // Write JPEG binary image buffer
+  client.write(fb->buf, fb->len);
+
+  // Chunk end
+  client.print("\r\n\r\n");
+
+  Serial.printf("⚡ Live Frame Streamed (%u bytes)\n", fb->len);
+
+  esp_camera_fb_return(fb); // Free camera frame buffer
+}
