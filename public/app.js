@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let analyticsChart = null;
   let activeChartRange = 20;
 
+  // Camera stream variables
+  let lastFrameTime = Date.now();
+  let frameCount = 0;
+  let currentFps = 0.0;
+
   // DOM Elements
   const connectionBadge = document.getElementById('connectionBadge');
   const connectionText = document.getElementById('connectionText');
@@ -42,12 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const highTempAlertInput = document.getElementById('highTempAlert');
   const lowTempAlertInput = document.getElementById('lowTempAlert');
 
-  // Camera stream variables
-  let lastFrameTime = Date.now();
-  let frameCount = 0;
-  let fpsTimer = null;
-  let currentFps = 0.0;
-  
+  // Camera elements
   const camStatusBadge = document.getElementById('camStatusBadge');
   const camStatusText = document.getElementById('camStatusText');
   const cameraStreamImg = document.getElementById('cameraStreamImg');
@@ -62,22 +62,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Socket.io Connection
   initSocket();
 
-
   // Initialize Charts
   initLiveChart();
   initAnalyticsChart();
 
-  // Event Listeners
+  // Initialize All Event Listeners safely
   setupNavigation();
   setupUnitToggle();
   setupSimulateButton();
   setupChartControls();
   setupLogActions();
   setupCodeCopy();
+  setupCameraActions();
 
   // Audio Beep generator using Web Audio API
   function playBeep(freq = 880, duration = 0.2) {
-    if (!audioAlertToggle.checked) return;
+    if (!audioAlertToggle || !audioAlertToggle.checked) return;
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = audioCtx.createOscillator();
@@ -99,17 +99,17 @@ document.addEventListener('DOMContentLoaded', () => {
     socket = io();
 
     socket.on('connect', () => {
-      connectionBadge.className = 'status-badge online';
-      connectionText.textContent = 'ESP32 Cloud Online';
+      if (connectionBadge) connectionBadge.className = 'status-badge online';
+      if (connectionText) connectionText.textContent = 'ESP32 Cloud Online';
     });
 
     socket.on('disconnect', () => {
-      connectionBadge.className = 'status-badge offline';
-      connectionText.textContent = 'Disconnected';
+      if (connectionBadge) connectionBadge.className = 'status-badge offline';
+      if (connectionText) connectionText.textContent = 'Disconnected';
     });
 
     socket.on('init_data', (payload) => {
-      if (payload.history && payload.history.length > 0) {
+      if (payload && payload.history && payload.history.length > 0) {
         historyData = payload.history;
         currentReading = payload.latest || historyData[historyData.length - 1];
         updateUI();
@@ -121,8 +121,8 @@ document.addEventListener('DOMContentLoaded', () => {
       currentReading = reading;
       
       // Check alerts
-      const highThreshold = parseFloat(highTempAlertInput.value) || 35;
-      const lowThreshold = parseFloat(lowTempAlertInput.value) || 10;
+      const highThreshold = parseFloat(highTempAlertInput ? highTempAlertInput.value : 35) || 35;
+      const lowThreshold = parseFloat(lowTempAlertInput ? lowTempAlertInput.value : 10) || 10;
       
       if (reading.temp_c >= highThreshold) {
         playBeep(1000, 0.4);
@@ -134,30 +134,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('camera_frame', (payload) => {
-      if (payload && payload.frame) {
+      if (payload && payload.frame && cameraStreamImg) {
         cameraStreamImg.src = payload.frame;
         cameraStreamImg.style.display = 'block';
-        cameraPlaceholder.style.display = 'none';
+        if (cameraPlaceholder) cameraPlaceholder.style.display = 'none';
 
-        camStatusBadge.className = 'status-badge online';
-        camStatusText.textContent = 'Camera Live Stream';
+        if (camStatusBadge) camStatusBadge.className = 'status-badge online';
+        if (camStatusText) camStatusText.textContent = 'Camera Live Stream';
 
         const now = Date.now();
         frameCount++;
         if (now - lastFrameTime >= 1000) {
           currentFps = (frameCount * 1000 / (now - lastFrameTime)).toFixed(1);
-          camFpsBadge.innerHTML = `<i class="fa-solid fa-bolt"></i> ${currentFps} FPS`;
+          if (camFpsBadge) camFpsBadge.innerHTML = `<i class="fa-solid fa-bolt"></i> ${currentFps} FPS`;
           frameCount = 0;
           lastFrameTime = now;
         }
 
         const dateStr = new Date(payload.timestamp).toLocaleTimeString();
-        camTimestampDisplay.innerHTML = `<i class="fa-solid fa-clock"></i> Last frame: ${dateStr}`;
+        if (camTimestampDisplay) camTimestampDisplay.innerHTML = `<i class="fa-solid fa-clock"></i> Last frame: ${dateStr}`;
       }
     });
 
-    setupCameraActions();
-
+    socket.on('history_cleared', () => {
+      historyData = [];
+      currentReading = null;
+      updateUI();
+    });
+  }
 
   function formatTemp(valC, valF) {
     if (valC === undefined || valC === null) return '--.-';
@@ -166,11 +170,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateUI() {
     if (!currentReading) {
-      currentTempDisplay.textContent = '--.-';
-      statLatest.textContent = '--.-';
-      statMin.textContent = '--.-';
-      statMax.textContent = '--.-';
-      statAvg.textContent = '--.-';
+      if (currentTempDisplay) currentTempDisplay.textContent = '--.-';
+      if (statLatest) statLatest.textContent = '--.-';
+      if (statMin) statMin.textContent = '--.-';
+      if (statMax) statMax.textContent = '--.-';
+      if (statAvg) statAvg.textContent = '--.-';
       return;
     }
 
@@ -179,24 +183,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const valF = currentReading.temp_f;
     const formattedVal = formatTemp(valC, valF);
     
-    currentTempDisplay.textContent = formattedVal;
-    currentUnitSymbol.textContent = `°${currentUnit}`;
-    statLatest.textContent = `${formattedVal} °${currentUnit}`;
-    statSensorId.textContent = `Sensor: ${currentReading.sensor_id}`;
+    if (currentTempDisplay) currentTempDisplay.textContent = formattedVal;
+    if (currentUnitSymbol) currentUnitSymbol.textContent = `°${currentUnit}`;
+    if (statLatest) statLatest.textContent = `${formattedVal} °${currentUnit}`;
+    if (statSensorId) statSensorId.textContent = `Sensor: ${currentReading.sensor_id}`;
 
     // 2. Last Updated Timestamp
     const date = new Date(currentReading.timestamp);
-    lastUpdatedTime.textContent = date.toLocaleTimeString();
+    if (lastUpdatedTime) lastUpdatedTime.textContent = date.toLocaleTimeString();
 
     // 3. RSSI
-    wifiRssi.textContent = currentReading.wifi_rssi ? currentReading.wifi_rssi : 'N/A';
+    if (wifiRssi) wifiRssi.textContent = currentReading.wifi_rssi ? currentReading.wifi_rssi : 'N/A';
 
-    // 4. Thermometer Visual Liquid Gauge (Map -10°C to 60°C to 5% - 95% height)
+    // 4. Thermometer Visual Liquid Gauge
     const minTempGauge = 0;
     const maxTempGauge = 60;
     let percentage = ((valC - minTempGauge) / (maxTempGauge - minTempGauge)) * 100;
     percentage = Math.max(5, Math.min(95, percentage));
-    thermometerLiquid.style.height = `${percentage}%`;
+    if (thermometerLiquid) thermometerLiquid.style.height = `${percentage}%`;
 
     // 5. Gauge Color and Status Tag
     let statusText = 'Normal';
@@ -226,14 +230,18 @@ document.addEventListener('DOMContentLoaded', () => {
       statusBorder = 'rgba(248, 113, 113, 0.3)';
     }
 
-    tempStatusTag.textContent = statusText;
-    tempStatusTag.style.color = statusColor;
-    tempStatusTag.style.backgroundColor = statusBg;
-    tempStatusTag.style.borderColor = statusBorder;
+    if (tempStatusTag) {
+      tempStatusTag.textContent = statusText;
+      tempStatusTag.style.color = statusColor;
+      tempStatusTag.style.backgroundColor = statusBg;
+      tempStatusTag.style.borderColor = statusBorder;
+    }
     
-    thermometerLiquid.style.background = statusColor;
-    thermometerBulb.style.background = statusColor;
-    thermometerBulb.style.boxShadow = `0 0 20px ${statusColor}`;
+    if (thermometerLiquid) thermometerLiquid.style.background = statusColor;
+    if (thermometerBulb) {
+      thermometerBulb.style.background = statusColor;
+      thermometerBulb.style.boxShadow = `0 0 20px ${statusColor}`;
+    }
 
     // 6. Stats Summary
     if (historyData.length > 0) {
@@ -245,14 +253,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const minObj = historyData[tempArray.indexOf(minVal)];
       const maxObj = historyData[tempArray.indexOf(maxVal)];
 
-      statMin.textContent = `${minVal.toFixed(1)} °${currentUnit}`;
-      statMinTime.textContent = new Date(minObj.timestamp).toLocaleTimeString();
+      if (statMin) statMin.textContent = `${minVal.toFixed(1)} °${currentUnit}`;
+      if (statMinTime) statMinTime.textContent = new Date(minObj.timestamp).toLocaleTimeString();
 
-      statMax.textContent = `${maxVal.toFixed(1)} °${currentUnit}`;
-      statMaxTime.textContent = new Date(maxObj.timestamp).toLocaleTimeString();
+      if (statMax) statMax.textContent = `${maxVal.toFixed(1)} °${currentUnit}`;
+      if (statMaxTime) statMaxTime.textContent = new Date(maxObj.timestamp).toLocaleTimeString();
 
-      statAvg.textContent = `${avgVal.toFixed(1)} °${currentUnit}`;
-      statCount.textContent = `Based on ${historyData.length} readings`;
+      if (statAvg) statAvg.textContent = `${avgVal.toFixed(1)} °${currentUnit}`;
+      if (statCount) statCount.textContent = `Based on ${historyData.length} readings`;
     }
 
     // 7. Update Charts & Logs
@@ -262,7 +270,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function initLiveChart() {
-    const ctx = document.getElementById('liveChart').getContext('2d');
+    const chartElem = document.getElementById('liveChart');
+    if (!chartElem) return;
+    const ctx = chartElem.getContext('2d');
     
     const gradient = ctx.createLinearGradient(0, 0, 0, 250);
     gradient.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
@@ -316,7 +326,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function initAnalyticsChart() {
-    const ctx = document.getElementById('analyticsChart').getContext('2d');
+    const chartElem = document.getElementById('analyticsChart');
+    if (!chartElem) return;
+    const ctx = chartElem.getContext('2d');
     
     const gradient = ctx.createLinearGradient(0, 0, 0, 350);
     gradient.addColorStop(0, 'rgba(192, 132, 252, 0.4)');
@@ -366,6 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderLogsTable() {
+    if (!logsTableBody) return;
     if (historyData.length === 0) {
       logsTableBody.innerHTML = `<tr><td colspan="6" class="text-center">No temperature data recorded yet.</td></tr>`;
       return;
@@ -401,9 +414,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tab.classList.add('active');
         const targetId = `tab-${tab.dataset.tab}`;
-        document.getElementById(targetId).classList.add('active');
+        const targetContent = document.getElementById(targetId);
+        if (targetContent) targetContent.classList.add('active');
 
-        if (tab.dataset.tab === 'analytics') {
+        if (tab.dataset.tab === 'analytics' && analyticsChart) {
           setTimeout(() => analyticsChart.resize(), 100);
         }
       });
@@ -411,43 +425,49 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setupUnitToggle() {
-    unitCBtn.addEventListener('click', () => {
-      if (currentUnit === 'C') return;
-      currentUnit = 'C';
-      unitCBtn.classList.add('active');
-      unitFBtn.classList.remove('active');
-      updateUI();
-    });
+    if (unitCBtn) {
+      unitCBtn.addEventListener('click', () => {
+        if (currentUnit === 'C') return;
+        currentUnit = 'C';
+        unitCBtn.classList.add('active');
+        if (unitFBtn) unitFBtn.classList.remove('active');
+        updateUI();
+      });
+    }
 
-    unitFBtn.addEventListener('click', () => {
-      if (currentUnit === 'F') return;
-      currentUnit = 'F';
-      unitFBtn.classList.add('active');
-      unitCBtn.classList.remove('active');
-      updateUI();
-    });
+    if (unitFBtn) {
+      unitFBtn.addEventListener('click', () => {
+        if (currentUnit === 'F') return;
+        currentUnit = 'F';
+        unitFBtn.classList.add('active');
+        if (unitCBtn) unitCBtn.classList.remove('active');
+        updateUI();
+      });
+    }
   }
 
   function setupSimulateButton() {
-    quickSimBtn.addEventListener('click', async () => {
-      try {
-        quickSimBtn.disabled = true;
-        quickSimBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sending...`;
-        
-        await fetch('/api/simulate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ baseTemp: 26.0 })
-        });
-      } catch (err) {
-        console.error('Simulation error:', err);
-      } finally {
-        setTimeout(() => {
-          quickSimBtn.disabled = false;
-          quickSimBtn.innerHTML = `<i class="fa-solid fa-bolt"></i> Push Test Reading`;
-        }, 500);
-      }
-    });
+    if (quickSimBtn) {
+      quickSimBtn.addEventListener('click', async () => {
+        try {
+          quickSimBtn.disabled = true;
+          quickSimBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sending...`;
+          
+          await fetch('/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ baseTemp: 26.0 })
+          });
+        } catch (err) {
+          console.error('Simulation error:', err);
+        } finally {
+          setTimeout(() => {
+            quickSimBtn.disabled = false;
+            quickSimBtn.innerHTML = `<i class="fa-solid fa-bolt"></i> Push Test Reading`;
+          }, 500);
+        }
+      });
+    }
   }
 
   function setupChartControls() {
@@ -461,44 +481,157 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    refreshAnalyticsBtn.addEventListener('click', () => {
-      updateAnalyticsChart();
-    });
+    if (refreshAnalyticsBtn) {
+      refreshAnalyticsBtn.addEventListener('click', () => {
+        updateAnalyticsChart();
+      });
+    }
   }
 
   function setupLogActions() {
-    exportCsvBtn.addEventListener('click', () => {
-      if (historyData.length === 0) {
-        alert('No sensor data to export!');
-        return;
-      }
-      
-      let csvContent = 'data:text/csv;charset=utf-8,ID,Timestamp,SensorID,Temp_C,Temp_F,WiFi_RSSI\n';
-      historyData.forEach(row => {
-        csvContent += `${row.id},"${row.timestamp}",${row.sensor_id},${row.temp_c},${row.temp_f},${row.wifi_rssi || ''}\n`;
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', () => {
+        if (historyData.length === 0) {
+          alert('No sensor data to export!');
+          return;
+        }
+        
+        let csvContent = 'data:text/csv;charset=utf-8,ID,Timestamp,SensorID,Temp_C,Temp_F,WiFi_RSSI\n';
+        historyData.forEach(row => {
+          csvContent += `${row.id},"${row.timestamp}",${row.sensor_id},${row.temp_c},${row.temp_f},${row.wifi_rssi || ''}\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', `esp32_temperature_logs_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    }
+
+    if (clearLogsBtn) {
+      clearLogsBtn.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to clear all temperature history logs?')) {
+          await fetch('/api/temperature/history', { method: 'DELETE' });
+        }
+      });
+    }
+  }
+
+  function setupCodeCopy() {
+    if (copyCodeBtn) {
+      copyCodeBtn.addEventListener('click', () => {
+        const codeBlock = document.getElementById('espCodeBlock');
+        if (!codeBlock) return;
+        const code = codeBlock.textContent;
+        navigator.clipboard.writeText(code).then(() => {
+          copyCodeBtn.innerHTML = `<i class="fa-solid fa-check"></i> Copied!`;
+          setTimeout(() => {
+            copyCodeBtn.innerHTML = `<i class="fa-solid fa-copy"></i> Copy Sketch`;
+          }, 2000);
+        });
+      });
+    }
+
+    // Code selector dropdown or tab switch if available
+    const codeSelectBtnTemp = document.getElementById('codeSelectTemp');
+    const codeSelectBtnCam = document.getElementById('codeSelectCam');
+    const espCodeBlock = document.getElementById('espCodeBlock');
+
+    if (codeSelectBtnTemp && codeSelectBtnCam && espCodeBlock) {
+      codeSelectBtnTemp.addEventListener('click', () => {
+        codeSelectBtnTemp.classList.add('active');
+        codeSelectBtnCam.classList.remove('active');
+        espCodeBlock.textContent = `/* ESP32 Temperature Sensor Code */
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* SERVER_URL    = "https://astra26.onrender.com/api/temperature";
+
+#define ONE_WIRE_BUS 4
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+void setup() {
+  Serial.begin(115200);
+  sensors.begin();
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) delay(500);
+}
+
+void loop() {
+  sensors.requestTemperatures();
+  float tempC = sensors.getTempCByIndex(0);
+  if (tempC != DEVICE_DISCONNECTED_C && WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(SERVER_URL);
+    http.addHeader("Content-Type", "application/json");
+    String json = "{\"temperature\":" + String(tempC, 2) + "}";
+    http.POST(json);
+    http.end();
+  }
+  delay(10000);
+}`;
       });
 
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `esp32_temperature_logs_${new Date().toISOString().slice(0,10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
+      codeSelectBtnCam.addEventListener('click', () => {
+        codeSelectBtnCam.classList.add('active');
+        codeSelectBtnTemp.classList.remove('active');
+        espCodeBlock.textContent = `/* ESP32-CAM AI-THINKER Cloud Video Stream */
+#include "esp_camera.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
 
-    clearLogsBtn.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to clear all temperature history logs?')) {
-        await fetch('/api/temperature/history', { method: 'DELETE' });
-      }
-    });
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
+
+void setup() {
+  Serial.begin(115200);
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = 5; config.pin_d1 = 18; config.pin_d2 = 19; config.pin_d3 = 21;
+  config.pin_d4 = 36; config.pin_d5 = 39; config.pin_d6 = 34; config.pin_d7 = 35;
+  config.pin_xclk = 0; config.pin_pclk = 22; config.pin_vsync = 25; config.pin_href = 23;
+  config.pin_siod = 26; config.pin_sioc = 27; config.pin_pwdn = 32; config.pin_reset = -1;
+  config.xclk_freq_hz = 20000000; config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_VGA; config.jpeg_quality = 12; config.fb_count = 2;
+
+  esp_camera_init(&config);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) delay(500);
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    camera_fb_t * fb = esp_camera_fb_get();
+    if (fb) {
+      HTTPClient http;
+      http.begin(SERVER_URL);
+      http.addHeader("Content-Type", "image/jpeg");
+      http.POST(fb->buf, fb->len);
+      http.end();
+      esp_camera_fb_return(fb);
+    }
+  }
+  delay(300);
+}`;
+      });
+    }
   }
 
   function setupCameraActions() {
-    // Snapshot button
     if (takeSnapshotBtn) {
       takeSnapshotBtn.addEventListener('click', () => {
-        if (!cameraStreamImg.src || cameraStreamImg.style.display === 'none') {
+        if (!cameraStreamImg || !cameraStreamImg.src || cameraStreamImg.style.display === 'none') {
           alert('No live camera stream active to take a snapshot!');
           return;
         }
@@ -511,7 +644,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Fullscreen button
     if (cameraFullscreenBtn && videoPlayerContainer) {
       cameraFullscreenBtn.addEventListener('click', () => {
         if (!document.fullscreenElement) {
@@ -524,7 +656,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Canvas Test Generator for Camera Simulation
     if (simCameraFrameBtn) {
       simCameraFrameBtn.addEventListener('click', () => {
         const canvas = document.createElement('canvas');
@@ -532,11 +663,9 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.height = 480;
         const ctx = canvas.getContext('2d');
 
-        // Draw futuristic camera test pattern
         ctx.fillStyle = '#060911';
         ctx.fillRect(0, 0, 640, 480);
 
-        // Grid lines
         ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
         ctx.lineWidth = 1;
         for (let x = 0; x < 640; x += 40) {
@@ -546,7 +675,6 @@ document.addEventListener('DOMContentLoaded', () => {
           ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(640, y); ctx.stroke();
         }
 
-        // Center reticle
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -558,7 +686,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.arc(320, 240, 8, 0, Math.PI * 2);
         ctx.fill();
 
-        // Text banner
         ctx.fillStyle = '#f3f4f6';
         ctx.font = 'bold 22px Outfit, sans-serif';
         ctx.textAlign = 'center';
@@ -570,7 +697,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
-        // Send to backend endpoint
         fetch('/api/camera/frame', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -580,4 +706,3 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
-

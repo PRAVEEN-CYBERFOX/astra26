@@ -688,7 +688,22 @@ body {
   text-decoration: none;
 }
 
+.code-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.code-selector {
+  display: flex;
+  gap: 0.3rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+}
+
 .code-subtitle {
+
   font-size: 0.85rem;
   color: var(--text-muted);
   margin-bottom: 0.75rem;

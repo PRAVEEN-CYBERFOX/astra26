@@ -339,11 +339,18 @@
           <div class="card guide-code-card">
             <div class="card-header">
               <h2><i class="fa-solid fa-code"></i> ESP32 Arduino Code</h2>
-              <button id="copyCodeBtn" class="btn btn-secondary">
-                <i class="fa-solid fa-copy"></i> Copy Sketch
-              </button>
+              <div class="code-header-actions">
+                <div class="code-selector">
+                  <button id="codeSelectTemp" class="btn btn-sm btn-outline active">Temperature Sketch</button>
+                  <button id="codeSelectCam" class="btn btn-sm btn-outline">Camera Sketch</button>
+                </div>
+                <button id="copyCodeBtn" class="btn btn-secondary">
+                  <i class="fa-solid fa-copy"></i> Copy Sketch
+                </button>
+              </div>
             </div>
             <p class="code-subtitle">Install Arduino Libraries: <code>OneWire</code> &amp; <code>DallasTemperature</code> before compiling.</p>
+
             
             <div class="code-wrapper">
               <pre><code id="espCodeBlock">/*
