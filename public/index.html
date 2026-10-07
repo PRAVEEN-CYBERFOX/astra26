@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Astra Thermo Cloud - ESP32 Waterproof Temperature Monitor</title>
+  <meta name="description" content="Real-time ESP32 & DS18B20 waterproof temperature sensor dashboard hosted on Render.">
+  
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Chart.js & Socket.io client -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Header Navigation -->
+    <header class="main-header">
+      <div class="logo-container">
+        <div class="logo-icon">
+          <i class="fa-solid fa-temperature-arrow-up"></i>
+        </div>
+        <div>
+          <h1>Astra Thermo Cloud</h1>
+          <p class="subtitle">ESP32 + DS18B20 Waterproof Sensor Live Telemetry</p>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-badge" id="connectionBadge">
+          <span class="pulse-dot"></span>
+          <span id="connectionText">Connecting...</span>
+        </div>
+        <div class="unit-toggle">
+          <button id="unitCBtn" class="unit-btn active">°C</button>
+          <button id="unitFBtn" class="unit-btn">°F</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="live">
+        <i class="fa-solid fa-gauge-high"></i> Live Monitor
+      </button>
+      <button class="tab-btn" data-tab="analytics">
+        <i class="fa-solid fa-chart-line"></i> Analytics & Graphs
+      </button>
+      <button class="tab-btn" data-tab="logs">
+        <i class="fa-solid fa-list-check"></i> Data Logs
+      </button>
+      <button class="tab-btn" data-tab="guide">
+        <i class="fa-solid fa-microchip"></i> ESP32 Code & Setup Guide
+      </button>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main class="content-container">
+      
+      <!-- TAB 1: LIVE MONITOR -->
+      <section id="tab-live" class="tab-content active">
+        <div class="dashboard-grid">
+          
+          <!-- Gauge Card -->
+          <div class="card gauge-card">
+            <div class="card-header">
+              <h2><i class="fa-solid fa-droplet"></i> Waterproof Sensor Gauge</h2>
+              <span class="live-pill"><i class="fa-solid fa-signal"></i> REAL-TIME</span>
+            </div>
+            
+            <div class="thermometer-gauge-wrapper">
+              <!-- Visual Thermometer Liquid Gauge -->
+              <div class="liquid-thermometer">
+                <div class="thermometer-glass">
+                  <div class="thermometer-liquid" id="thermometerLiquid" style="height: 45%;"></div>
+                </div>
+                <div class="thermometer-bulb" id="thermometerBulb"></div>
+              </div>
+
+              <!-- Main Numeric Display -->
+              <div class="numeric-display">
+                <div class="temp-big-value">
+                  <span id="currentTempDisplay">--.-</span>
+                  <span class="unit-symbol" id="currentUnitSymbol">°C</span>
+                </div>
+                <div class="temp-status-tag" id="tempStatusTag">Normal Range</div>
+                <p class="sensor-info">
+                  <i class="fa-solid fa-clock"></i> Updated: <span id="lastUpdatedTime">Waiting for data...</span>
+                </p>
+                <div class="signal-badge" id="signalBadge">
+                  <i class="fa-solid fa-wifi"></i> Signal: <span id="wifiRssi">--</span> dBm
+                </div>
+              </div>
+            </div>
+
+            <!-- Simulator Quick Trigger -->
+            <div class="quick-sim-bar">
+              <span><i class="fa-solid fa-flask"></i> Testing locally without hardware?</span>
+              <button id="quickSimBtn" class="btn btn-secondary">
+                <i class="fa-solid fa-bolt"></i> Push Test Reading
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Stats Cards Grid -->
+          <div class="stats-column">
+            
+            <div class="card stat-card stat-current">
+              <div class="stat-icon"><i class="fa-solid fa-temperature-half"></i></div>
+              <div class="stat-content">
+                <h3>Latest Reading</h3>
+                <div class="stat-value" id="statLatest">--.-</div>
+                <div class="stat-subtext" id="statSensorId">Sensor: DS18B20</div>
+              </div>
+            </div>
+
+            <div class="card stat-card stat-min">
+              <div class="stat-icon"><i class="fa-solid fa-temperature-arrow-down"></i></div>
+              <div class="stat-content">
+                <h3>Minimum Temp</h3>
+                <div class="stat-value" id="statMin">--.-</div>
+                <div class="stat-subtext" id="statMinTime">No history yet</div>
+              </div>
+            </div>
+
+            <div class="card stat-card stat-max">
+              <div class="stat-icon"><i class="fa-solid fa-temperature-arrow-up"></i></div>
+              <div class="stat-content">
+                <h3>Maximum Temp</h3>
+                <div class="stat-value" id="statMax">--.-</div>
+                <div class="stat-subtext" id="statMaxTime">No history yet</div>
+              </div>
+            </div>
+
+            <div class="card stat-card stat-avg">
+              <div class="stat-icon"><i class="fa-solid fa-calculator"></i></div>
+              <div class="stat-content">
+                <h3>Average Temp</h3>
+                <div class="stat-value" id="statAvg">--.-</div>
+                <div class="stat-subtext" id="statCount">Based on 0 readings</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Realtime Mini Chart Card -->
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-chart-line"></i> Real-time Telemetry Stream</h2>
+            <div class="chart-actions">
+              <button class="btn btn-sm btn-outline active" data-range="20">Last 20</button>
+              <button class="btn btn-sm btn-outline" data-range="50">Last 50</button>
+              <button class="btn btn-sm btn-outline" data-range="100">Last 100</button>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="liveChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: ANALYTICS & HISTORICAL GRAPHS -->
+      <section id="tab-analytics" class="tab-content">
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-chart-area"></i> Historical Temperature Analysis</h2>
+            <button id="refreshAnalyticsBtn" class="btn btn-secondary">
+              <i class="fa-solid fa-arrows-rotate"></i> Refresh Data
+            </button>
+          </div>
+          <div class="chart-container large-chart">
+            <canvas id="analyticsChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Alert Threshold Settings Card -->
+        <div class="card settings-card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-bell"></i> Temperature Alert Thresholds</h2>
+          </div>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label for="highTempAlert"><i class="fa-solid fa-fire"></i> High Temp Warning Threshold (°C)</label>
+              <input type="number" id="highTempAlert" value="35.0" step="0.5">
+            </div>
+            <div class="form-group">
+              <label for="lowTempAlert"><i class="fa-solid fa-snowflake"></i> Low Temp Warning Threshold (°C)</label>
+              <input type="number" id="lowTempAlert" value="10.0" step="0.5">
+            </div>
+            <div class="form-group alert-toggle-group">
+              <label class="switch-label">
+                <input type="checkbox" id="audioAlertToggle" checked>
+                <span class="slider"></span>
+                Enable Audio Alarm on Threshold Exceeded
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: DATA LOGS -->
+      <section id="tab-logs" class="tab-content">
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-table"></i> Sensor Reading Logs</h2>
+            <div class="log-controls">
+              <button id="exportCsvBtn" class="btn btn-primary">
+                <i class="fa-solid fa-file-csv"></i> Export CSV
+              </button>
+              <button id="clearLogsBtn" class="btn btn-danger">
+                <i class="fa-solid fa-trash-can"></i> Clear History
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Sensor ID</th>
+                  <th>Temperature (°C)</th>
+                  <th>Temperature (°F)</th>
+                  <th>Wi-Fi Signal (RSSI)</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="logsTableBody">
+                <tr>
+                  <td colspan="6" class="text-center">No temperature data recorded yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: ESP32 CODE & SETUP GUIDE -->
+      <section id="tab-guide" class="tab-content">
+        <div class="guide-grid">
+          
+          <div class="card guide-card">
+            <div class="card-header">
+              <h2><i class="fa-solid fa-plug"></i> Hardware Wiring Schematic</h2>
+            </div>
+            <div class="wiring-info">
+              <div class="wiring-step">
+                <span class="step-num">1</span>
+                <div>
+                  <strong>DS18B20 Red Wire (VCC)</strong> → Connect to ESP32 <strong>3.3V or 5V</strong>.
+                </div>
+              </div>
+              <div class="wiring-step">
+                <span class="step-num">2</span>
+                <div>
+                  <strong>DS18B20 Black Wire (GND)</strong> → Connect to ESP32 <strong>GND</strong>.
+                </div>
+              </div>
+              <div class="wiring-step">
+                <span class="step-num">3</span>
+                <div>
+                  <strong>DS18B20 Yellow Wire (Data)</strong> → Connect to ESP32 <strong>GPIO 4</strong>.
+                </div>
+              </div>
+              <div class="wiring-step important-step">
+                <span class="step-num"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                <div>
+                  <strong>4.7kΩ Pull-up Resistor (Required)</strong>: Connect between <strong>VCC (Red)</strong> and <strong>Data (Yellow)</strong>.
+                </div>
+              </div>
+            </div>
+
+            <div class="card-header" style="margin-top: 2rem;">
+              <h2><i class="fa-solid fa-cloud-arrow-up"></i> Render Hosting Steps</h2>
+            </div>
+            <ol class="render-steps">
+              <li>Push this repository to <strong>GitHub</strong>.</li>
+              <li>Go to <a href="https://render.com" target="_blank" rel="noopener">Render.com</a> and sign in.</li>
+              <li>Click <strong>New +</strong> → Select <strong>Web Service</strong>.</li>
+              <li>Connect your GitHub repo.</li>
+              <li>Set <strong>Environment</strong> to <code>Node</code>.</li>
+              <li>Build Command: <code>npm install</code></li>
+              <li>Start Command: <code>npm start</code></li>
+              <li>Click <strong>Create Web Service</strong>! Your API URL will be: <code id="renderUrlPlaceholder">https://your-app-name.onrender.com/api/temperature</code></li>
+            </ol>
+          </div>
+
+          <div class="card guide-code-card">
+            <div class="card-header">
+              <h2><i class="fa-solid fa-code"></i> ESP32 Arduino Code</h2>
+              <button id="copyCodeBtn" class="btn btn-secondary">
+                <i class="fa-solid fa-copy"></i> Copy Sketch
+              </button>
+            </div>
+            <p class="code-subtitle">Install Arduino Libraries: <code>OneWire</code> &amp; <code>DallasTemperature</code> before compiling.</p>
+            
+            <div class="code-wrapper">
+              <pre><code id="espCodeBlock">/*
+ * ESP32 + DS18B20 Waterproof Temperature Sensor
+ * Automatically sends data to your Render cloud endpoint
+ */
+
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* SERVER_URL    = "https://your-app.onrender.com/api/temperature";
+
+#define ONE_WIRE_BUS 4
+#define STATUS_LED 2
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(STATUS_LED, OUTPUT);
+  sensors.begin();
+  
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi!");
+}
+
+void loop() {
+  sensors.requestTemperatures();
+  float tempC = sensors.getTempCByIndex(0);
+
+  if (tempC != DEVICE_DISCONNECTED_C && WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(SERVER_URL);
+    http.addHeader("Content-Type", "application/json");
+
+    String json = "{\"temperature\":" + String(tempC, 2) + ",\"sensor_id\":\"DS18B20_ESP32\"}";
+    int httpCode = http.POST(json);
+    Serial.printf("POST Code: %d\n", httpCode);
+    http.end();
+  }
+  delay(10000); // 10s interval
+}</code></pre>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+      <p>Astra Thermo Cloud &bull; ESP32 Waterproof Temperature Telemetry System &bull; Deployed on Render</p>
+    </footer>
+  </div>
+
+  <!-- JavaScript -->
+  <script src="app.js"></script>
+</body>
+</html>
