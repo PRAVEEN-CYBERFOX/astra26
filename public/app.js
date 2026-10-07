@@ -584,7 +584,7 @@ void loop() {
       codeSelectBtnCam.addEventListener('click', () => {
         codeSelectBtnCam.classList.add('active');
         codeSelectBtnTemp.classList.remove('active');
-        espCodeBlock.textContent = `/* ESP32-CAM (AI-THINKER) Robust Cloud Stream */
+        espCodeBlock.textContent = `/* ESP32-CAM Web-Safe Cloud Stream */
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -616,17 +616,18 @@ void loop() {
     if (fb) {
       HTTPClient http;
       http.begin(SERVER_URL);
-      http.setReuse(true);
-      http.setTimeout(6000);
+      http.setReuse(false);
+      http.setTimeout(8000);
       http.addHeader("Content-Type", "image/jpeg");
       http.POST(fb->buf, fb->len);
       http.end();
       esp_camera_fb_return(fb);
     }
   }
-  delay(3000); // 3s interval
+  delay(2000); // 2s interval
 }`;
       });
+
 
 
 

@@ -1,10 +1,9 @@
 /*
  * ===================================================================
- *  ESP32-CAM (AI-THINKER) Robust Cloud Streamer
+ *  ESP32-CAM (AI-THINKER) Web-Safe Cloud Streamer
  * ===================================================================
- *  - Fixed frame buffer malloc failed (CAMERA_FB_IN_DRAM)
- *  - Fixed cam_hal: FB-OVF overflow
- *  - Rate-limit safe 3-second frame interval for Render
+ *  - Uses clean single-session HTTP connections (http.setReuse(false))
+ *  - Fixes socket drops when viewing the website in a browser
  */
 
 #include "esp_camera.h"
@@ -20,8 +19,8 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 // Your Render Cloud API endpoint
 const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
 
-// Frame upload interval (3000ms = 3 seconds per frame)
-const int FRAME_INTERVAL_MS = 3000; 
+// Frame upload interval (2000ms = 2 seconds per frame)
+const int FRAME_INTERVAL_MS = 2000; 
 // ===================================================================
 
 // AI-THINKER CAMERA PIN CONFIGURATION
@@ -112,8 +111,8 @@ void sendFrame() {
 
   HTTPClient http;
   http.begin(SERVER_URL);
-  http.setReuse(true);
-  http.setTimeout(6000); // 6s timeout
+  http.setReuse(false);   // Fresh clean HTTP connection per frame (prevents socket reset when website opens)
+  http.setTimeout(8000);  // 8s timeout
   http.addHeader("Content-Type", "image/jpeg");
 
   int httpCode = http.POST(fb->buf, fb->len);
@@ -121,8 +120,7 @@ void sendFrame() {
   if (httpCode == 200 || httpCode == 201) {
     Serial.printf("⚡ Frame Sent (%u bytes) -> HTTP %d\n", fb->len, httpCode);
   } else {
-    Serial.printf("⚠️ POST Response: %d (%s) - Backing off...\n", httpCode, http.errorToString(httpCode).c_str());
-    delay(2000);
+    Serial.printf("⚠️ POST Response: %d (%s)\n", httpCode, http.errorToString(httpCode).c_str());
   }
 
   http.end();
