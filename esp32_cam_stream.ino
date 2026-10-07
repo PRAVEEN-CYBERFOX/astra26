@@ -1,7 +1,9 @@
 /*
  * ===================================================================
- *  ESP32-CAM (AI-THINKER) Live Cloud Video Streamer for Render
+ *  ESP32-CAM (AI-THINKER) Ultra-Stable Cloud Live Streamer
  * ===================================================================
+ *  - Fixed cam_hal: FB-OVF (Frame Buffer Overflow)
+ *  - Optimized for Mobile Hotspots & Cloud Bandwidth (QVGA 320x240)
  */
 
 #include "esp_camera.h"
@@ -18,8 +20,8 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* SERVER_URL    = "https://astra26.onrender.com/api/camera/frame";
 
 // Delay between frame uploads (in milliseconds)
-// 200ms = ~5 FPS | 300ms = ~3.3 FPS | 500ms = ~2 FPS
-const int FRAME_INTERVAL_MS = 250; 
+// 800ms = ~1.2 FPS (Super stable on mobile hotspot & cloud)
+const int FRAME_INTERVAL_MS = 800; 
 // ===================================================================
 
 // AI-THINKER CAMERA PIN CONFIGURATION
@@ -45,10 +47,10 @@ const int FRAME_INTERVAL_MS = 250;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n--- Starting ESP32-CAM Cloud Stream ---");
+  Serial.println("\n--- Starting ESP32-CAM Ultra-Stable Cloud Stream ---");
 
   pinMode(LED_FLASH_GPIO, OUTPUT);
-  digitalWrite(LED_FLASH_GPIO, LOW); // Flash LED OFF by default
+  digitalWrite(LED_FLASH_GPIO, LOW);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -64,15 +66,10 @@ void setup() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   
-  if(psramFound()){
-    config.frame_size = FRAMESIZE_VGA;  // 640x480 resolution
-    config.jpeg_quality = 12;            // 0-63 quality
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_QVGA; // 320x240 resolution
-    config.jpeg_quality = 15;
-    config.fb_count = 1;
-  }
+  // OPTIMIZED FOR STABILITY & ZERO OVERFLOW
+  config.frame_size = FRAMESIZE_QVGA; // 320x240 (~3.5 KB per frame)
+  config.jpeg_quality = 14;            // Optimal JPEG compression
+  config.fb_count = 1;                 // Single buffer prevents cam_hal: FB-OVF overflow
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -112,10 +109,9 @@ void sendFrame() {
 
   HTTPClient http;
   http.begin(SERVER_URL);
-  http.setReuse(true);    // Keep TCP/SSL connection open
-  http.setTimeout(4000);  // 4s timeout
+  http.setReuse(false);   // Fresh connection per frame prevents socket locks
+  http.setTimeout(5000);  // 5s network timeout
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("x-sensor-id", "ESP32_CAM_LIVE");
 
   int httpCode = http.POST(fb->buf, fb->len);
 
@@ -126,5 +122,5 @@ void sendFrame() {
   }
 
   http.end();
-  esp_camera_fb_return(fb); // Release memory buffer
+  esp_camera_fb_return(fb); // Free buffer memory
 }
